@@ -14,9 +14,9 @@ Foreach($Module in $ModulesRequired.Values)
 }
 
 $OULocations = @{
-PCReviewOU = "OU=90\+ Days,OU=Computers,OU=TMP,DC=TMP,DC=local"
-UserReviewOU = "OU=90\+ Days,OU=Users,OU=TMP,DC=TMP,DC=local"
-RemotePCOU = "OU=Remote Workstations,OU=Computers,OU=TMP,DC=TMP,DC=local"
+PCReviewOU = # Input OU that your PCs are located in
+UserReviewOU = # Input OU that your users are located in
+RemotePCOU = # OU to exclude if you have no VPN as last logon will not update in AD
 }
 
 $today = Get-Date
@@ -73,14 +73,14 @@ $UsersMoved = @()
 
 Foreach( $Comp in $Comps )
 {
-	#Disable-ADAccount $Comp.DistinguishedName #Not Approved to auto disable at this time
+	#Disable-ADAccount $Comp.DistinguishedName # Uncomment once testing has been completed to auto disable accounts
 	$CompsMoved += $Comp 
 	Move-ADObject $Comp.DistinguishedName -TargetPath $OULocations.PCReviewOU
 }
 
 Foreach( $User in $Users )
 {
-	#Disable-ADAccount $User.DistinguishedName #Not Approved to auto disable at this time
+	#Disable-ADAccount $User.DistinguishedName # Uncomment once testing has been completed to auto disable accounts
 	$UsersMoved += $User 
 	Move-ADObject $User.DistinguishedName -TargetPath $OULocations.UserReviewOU
 }

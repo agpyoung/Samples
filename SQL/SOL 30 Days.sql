@@ -1,0 +1,145 @@
+WITH RESULTS
+(
+	[ACCOUNT NUMBER],
+    [STATUS CODE],
+    [FIRST NAME],
+    [MIDDLE NAME],
+    [LAST NAME],
+	--[FILING DATE],
+	[SOL DATE],
+    [STATE]
+)
+AS
+(
+	SELECT 
+        [ACCOUNT NUMBER],
+        [STATUS CODE],
+        [FIRST NAME],
+        [MIDDLE NAME],
+        [LAST NAME],
+        --[FILING DATE],
+        [SOL DATE],
+        [STATE]
+	FROM OPENQUERY(ADB,'
+	SELECT DISTINCT
+		TRIM(AR.ACCTNUM) [ACCOUNT NUMBER],
+        SC.CODE [STATUS CODE],
+		TRIM(DEM.FIRSTNAME) [FIRST NAME],
+		TRIM(DEM.MIDDLENAME) [MIDDLE NAME],
+		TRIM(DEM.LASTNAME) [LAST NAME],
+		--FILINGDATE [FILING DATE],
+		CASE 
+			WHEN 
+			FNAMEVALUE(VARVALUE.VARS, ''STOL'') IS NOT NULL 
+			AND FNAMEVALUE(VARVALUE.VARS, ''STOL'') <> ''''
+				THEN CAST(FNAMEVALUE(VARVALUE.VARS, ''STOL'') as SQL_DATE) 
+			ELSE NULL
+		END [SOL DATE],
+        DEM.STATE [STATE]
+	FROM 
+		AROOT AR
+	JOIN 
+		(
+			SELECT CLAIM.PKAROOT, 
+			CLAIM.PKSTATCODE 
+			FROM 
+			CLAIM
+		) CL ON AR.PKAROOT = CL.PKAROOT
+	JOIN 
+		(
+			SELECT 
+			ACOMP.PKAROOT,
+			ACOMP.PKENTITY
+			FROM
+			ACOMP
+			WHERE 
+			TRIM(ACOMP.ENTRYTYPE) = ''DEB''
+		) AC ON AC.PKAROOT = AR.PKAROOT
+	JOIN 
+		(
+			SELECT 
+			DEMOG.FIRSTNAME,
+			DEMOG.MIDDLENAME,
+			DEMOG.LASTNAME,
+            DEMOG.STATE,
+			DEMOG.PKDEMOG
+			FROM
+			DEMOG
+		) DEM ON DEM.PKDEMOG = AC.PKENTITY
+	JOIN 
+		(
+			SELECT
+			STATCODE.CODE,
+			STATCODE.PKSTATCODE
+			FROM
+			STATCODE
+		) SC ON CL.PKSTATCODE = SC.PKSTATCODE
+	JOIN 
+		(
+			SELECT
+			LEGALACT.PKFILING,
+			LEGALACT.PKAROOT
+			FROM
+			LEGALACT
+		) LA ON LA.PKAROOT = AR.PKAROOT
+	JOIN 
+		(
+			SELECT
+			FILING.CTFILENO,
+			FILING.FILINGDATE,
+            FILING.SERVEDATE,
+			FILING.PKFILING
+			FROM
+			FILING
+		) FI ON LA.PKFILING = FI.PKFILING
+	LEFT JOIN VARVALUE on VARVALUE.PKPRIME = AR.PKAROOT 
+	LEFT JOIN JUDGMENT on JUDGMENT.PKAROOT = AR.PKAROOT
+	WHERE 
+		SC.CODE < ''319''
+		AND AR.ACCTMARK <> ''I''
+		AND AR.INVALID <> 1
+		AND 
+            (
+                (
+                    DEM.STATE = ''NY''
+                    AND 
+                    FI.FILINGDATE <= CONVERT(CURDATE() -120, SQL_DATE)
+                )
+            OR
+                (
+                    DEM.STATE <> ''NY''
+                    AND
+                    (
+                        FI.FILINGDATE IS NULL
+                        OR
+                        FI.FILINGDATE = ''1899-12-30''
+                    )
+                    
+                )
+            )
+        AND 
+            (
+                FI.SERVEDATE IS NULL
+                OR 
+                FI.SERVEDATE = ''1899-12-30''
+            )
+		AND JUDGMENT.JMTDATE IS NULL
+	ORDER BY AR.ACCTNUM
+	')
+)
+
+SELECT 
+CASE
+	WHEN [RESULTS].[SOL DATE] IS NOT NULL AND [RESULTS].[SOL DATE] < CONVERT(DATE, GETDATE())
+		THEN 'Out of Statute'
+    WHEN [RESULTS].[SOL DATE] BETWEEN  CONVERT(DATE, GETDATE()) AND CONVERT(DATE, GETDATE() + 30)
+        THEN 'SOL in 30 days or less'
+	WHEN [RESULTS].[SOL DATE] IS NULL
+		THEN 'No SOL date Needs Legal Review'
+END [STATUS]
+,* 
+FROM RESULTS
+WHERE
+[SOL DATE] <= CONVERT(DATE, GETDATE() + 30)
+OR
+[SOL DATE] IS NULL
